@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loop Player</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0d0d0d;
+    --surface: #161616;
+    --surface2: #1e1e1e;
+    --border: #2a2a2a;
+    --accent: #e8ff47;
+    --accent2: #ff6b35;
+    --text: #f0f0f0;
+    --muted: #666;
+    --a-color: #e8ff47;
+    --b-color: #ff6b35;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 780px;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 0.75rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* DROP ZONE */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+    margin-bottom: 24px;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: #1a1f0a;
+  }
+
+  .drop-zone .icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    opacity: 0.6;
+  }
+
+  .drop-zone p {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .drop-zone .hint {
+    font-size: 0.7rem;
+    color: #444;
+  }
+
+  #fileInput { display: none; }
+
+  /* PLAYER */
+  .player {
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .player.visible { display: flex; }
+
+  .file-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .file-info .fname {
+    font-size: 0.8rem;
+    color: var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+
+  .file-info .duration {
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* WAVEFORM / TIMELINE */
+  .timeline-wrap {
+    position: relative;
+    background: var(--surface);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 16px;
+  }
+
+  .time-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .timeline {
+    position: relative;
+    height: 56px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  /* Background track */
+  .track-bg {
+    position: absolute;
+    top: 50%;
+    left: 0; right: 0;
+    transform: translateY(-50%);
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+  }
+
+  /* Loop region */
+  .loop-region {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 6px;
+    background: linear-gradient(90deg, var(--a-color), var(--b-color));
+    border-radius: 3px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .loop-region.visible { opacity: 1; }
+
+  /* Playhead */
+  .playhead {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: white;
+    border-radius: 1px;
+    pointer-events: none;
+    transform: translateX(-50%);
+    box-shadow: 0 0 8px rgba(255,255,255,0.4);
+  }
+
+  /* A/B markers */
+  .marker {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 12px;
+    border-radius: 2px;
+    pointer-events: auto;
+    transform: translateX(-50%);
+    display: none;
+    cursor: ew-resize;
+    z-index: 10;
+  }
+
+  .marker::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 50%;
+    width: 3px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+  }
+
+  .marker-a::after { background: var(--a-color); box-shadow: 0 0 8px rgba(232,255,71,0.5); }
+  .marker-b::after { background: var(--b-color); box-shadow: 0 0 8px rgba(255,107,53,0.5); }
+
+  .marker.visible { display: block; }
+
+  .marker-a { background: transparent; }
+  .marker-b { background: transparent; }
+
+  .marker-label {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .marker-a .marker-label { background: var(--a-color); color: #000; }
+  .marker-b .marker-label { background: var(--b-color); color: #000; }
+
+  /* AB Controls */
+  .ab-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 12px;
+  }
+
+  .btn-ab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid;
+    background: transparent;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-a {
+    border-color: var(--a-color);
+    color: var(--a-color);
+  }
+  .btn-a:hover, .btn-a.active {
+    background: var(--a-color);
+    color: #000;
+  }
+
+  .btn-b {
+    border-color: var(--b-color);
+    color: var(--b-color);
+  }
+  .btn-b:hover, .btn-b.active {
+    background: var(--b-color);
+    color: #000;
+  }
+
+  .btn-clear {
+    border-color: var(--border);
+    color: var(--muted);
+    margin-left: auto;
+  }
+  .btn-clear:hover {
+    border-color: #555;
+    color: var(--text);
+  }
+
+  .ab-time {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-left: 4px;
+  }
+
+  /* MAIN CONTROLS */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+  }
+
+  .btn-play {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .btn-play:hover { background: #d4eb2e; transform: scale(1.05); }
+  .btn-play svg { width: 18px; height: 18px; fill: #000; }
+
+  .time-display {
+    font-size: 0.85rem;
+    color: var(--text);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    min-width: 110px;
+  }
+
+  .time-display .sep { color: var(--muted); margin: 0 4px; }
+
+  /* Loop toggle */
+  .loop-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    cursor: pointer;
+  }
+
+  .loop-toggle input { display: none; }
+
+  .toggle-track {
+    width: 40px;
+    height: 22px;
+    background: var(--border);
+    border-radius: 11px;
+    position: relative;
+    transition: background 0.2s;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+
+  .loop-toggle input:checked ~ .toggle-track { background: #2a3a08; }
+  .loop-toggle input:checked ~ .toggle-track .toggle-thumb {
+    background: var(--accent);
+    transform: translateX(18px);
+  }
+
+  .loop-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Speed */
+  .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+  }
+
+  .speed-label {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+
+  .speed-val {
+    font-size: 0.85rem;
+    color: var(--accent);
+    min-width: 36px;
+    text-align: right;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  .speed-presets {
+    display: flex;
+    gap: 6px;
+  }
+
+  .speed-btn {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .speed-btn:hover, .speed-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Video */
+  video, audio {
+    display: none;
+  }
+
+  .video-container {
+    display: none;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid var(--border);
+  }
+
+  .video-container.visible { display: block; }
+
+  .video-container video {
+    display: block;
+    width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+  }
+
+  /* New file btn */
+  .btn-new {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+  .btn-new:hover { border-color: #555; color: var(--text); }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  .status-dot.playing {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 1s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>LOOP//</h1>
+    <span class="subtitle">A·B repeat player</span>
+  </header>
+
+  <!-- Drop Zone -->
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">⬇</div>
+    <p>Σύρε ένα αρχείο εδώ ή κάνε κλικ για να επιλέξεις</p>
+    <span class="hint">audio · video · mp3 · wav · mp4 · mov · m4a · ogg · flac</span>
+    <input type="file" id="fileInput" accept="audio/*,video/*">
+  </div>
+
+  <!-- Hidden media elements -->
+  <audio id="audioEl"></audio>
+  <div class="video-container" id="videoContainer">
+    <video id="videoEl"></video>
+  </div>
+
+  <!-- Player UI -->
+  <div class="player" id="player">
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div class="file-info" style="flex:1">
+        <span class="fname" id="fileName">—</span>
+        <span class="duration" id="totalDuration">0:00</span>
+      </div>
+      <button class="btn-new" id="btnNew">↩ Νέο</button>
+    </div>
+
+    <!-- Video (if applicable) -->
+
+    <!-- Timeline -->
+    <div class="timeline-wrap">
+      <div class="time-labels">
+        <span id="timeLeft">0:00</span>
+        <span id="timeRight">0:00</span>
+      </div>
+      <div class="timeline" id="timeline">
+        <div class="track-bg"></div>
+        <div class="loop-region" id="loopRegion"></div>
+        <div class="marker marker-a" id="markerA">
+          <span class="marker-label">A</span>
+        </div>
+        <div class="marker marker-b" id="markerB">
+          <span class="marker-label">B</span>
+        </div>
+        <div class="playhead" id="playhead"></div>
+      </div>
+
+      <!-- AB Controls -->
+      <div class="ab-controls">
+        <button class="btn-ab btn-a" id="btnA">
+          ◆ SET A
+        </button>
+        <span class="ab-time" id="aTime">—</span>
+        <button class="btn-ab btn-b" id="btnB">
+          ◆ SET B
+        </button>
+        <span class="ab-time" id="bTime">—</span>
+        <button class="btn-ab btn-clear" id="btnClear">✕ Clear</button>
+      </div>
+    </div>
+
+    <!-- Main Controls -->
+    <div class="controls">
+      <button class="btn-play" id="btnPlay">
+        <svg id="iconPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="iconPause" viewBox="0 0 24 24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+
+      <div class="time-display">
+        <span id="currentTime">0:00.0</span>
+        <span class="sep">/</span>
+        <span id="totalTime">0:00</span>
+      </div>
+
+      <div class="status-bar">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">STOPPED</span>
+      </div>
+
+      <label class="loop-toggle" style="margin-left:auto">
+        <input type="checkbox" id="loopCheck" checked>
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        <span class="loop-label">Loop</span>
+      </label>
+    </div>
+
+    <!-- Speed -->
+    <div class="speed-control">
+      <span class="speed-label">Speed</span>
+      <input type="range" id="speedRange" min="0.25" max="2" step="0.05" value="1">
+      <span class="speed-val" id="speedVal">1.00×</span>
+      <div class="speed-presets">
+        <button class="speed-btn active" data-speed="1">1×</button>
+        <button class="speed-btn" data-speed="0.75">0.75×</button>
+        <button class="speed-btn" data-speed="0.5">0.5×</button>
+        <button class="speed-btn" data-speed="1.25">1.25×</button>
+        <button class="speed-btn" data-speed="1.5">1.5×</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const player = document.getElementById('player');
+  const audioEl = document.getElementById('audioEl');
+  const videoEl = document.getElementById('videoEl');
+  const videoContainer = document.getElementById('videoContainer');
+
+  const btnPlay = document.getElementById('btnPlay');
+  const iconPlay = document.getElementById('iconPlay');
+  const iconPause = document.getElementById('iconPause');
+  const timeline = document.getElementById('timeline');
+  const playhead = document.getElementById('playhead');
+  const loopRegion = document.getElementById('loopRegion');
+  const markerA = document.getElementById('markerA');
+  const markerB = document.getElementById('markerB');
+  const btnA = document.getElementById('btnA');
+  const btnB = document.getElementById('btnB');
+  const btnClear = document.getElementById('btnClear');
+  const btnNew = document.getElementById('btnNew');
+  const loopCheck = document.getElementById('loopCheck');
+  const speedRange = document.getElementById('speedRange');
+  const speedVal = document.getElementById('speedVal');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  let media = null;
+  let isVideo = false;
+  let pointA = null;
+  let pointB = null;
+  let raf = null;
+  let isDragging = false;
+
+  function fmt(t, decimals = false) {
+    if (isNaN(t) || t < 0) t = 0;
+    const m = Math.floor(t / 60);
+    const s = t % 60;
+    if (decimals) return `${m}:${s.toFixed(1).padStart(4,'0')}`;
+    return `${m}:${Math.floor(s).toString().padStart(2,'0')}`;
+  }
+
+  function loadFile(file) {
+    const url = URL.createObjectURL(file);
+    isVideo = file.type.startsWith('video');
+
+    if (isVideo) {
+      videoEl.src = url;
+      videoContainer.classList.add('visible');
+      media = videoEl;
+    } else {
+      audioEl.src = url;
+      videoContainer.classList.remove('visible');
+      media = audioEl;
+    }
+
+    media.playbackRate = parseFloat(speedRange.value);
+
+    media.onloadedmetadata = () => {
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('totalDuration').textContent = fmt(media.duration);
+      document.getElementById('totalTime').textContent = fmt(media.duration);
+      document.getElementById('timeRight').textContent = fmt(media.duration);
+      dropZone.style.display = 'none';
+      player.classList.add('visible');
+      clearAB();
+      startRAF();
+    };
+  }
+
+  // Drop & click
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+
+  btnNew.addEventListener('click', () => {
+    if (media) { media.pause(); media.src = ''; }
+    dropZone.style.display = '';
+    player.classList.remove('visible');
+    videoContainer.classList.remove('visible');
+    clearAB();
+    cancelAnimationFrame(raf);
+    setPlaying(false);
+  });
+
+  // Play/Pause
+  btnPlay.addEventListener('click', () => {
+    if (!media) return;
+    if (media.paused) {
+      // If A is set and current time is before A, jump to A
+      if (pointA !== null && media.currentTime < pointA) {
+        media.currentTime = pointA;
+      }
+      media.play();
+    } else {
+      media.pause();
+    }
+  });
+
+  function setPlaying(playing) {
+    iconPlay.style.display = playing ? 'none' : '';
+    iconPause.style.display = playing ? '' : 'none';
+    statusDot.classList.toggle('playing', playing);
+    statusText.textContent = playing ? 'PLAYING' : 'STOPPED';
+  }
+
+  media === null; // just init
+  audioEl.addEventListener('play', () => setPlaying(true));
+  audioEl.addEventListener('pause', () => setPlaying(false));
+  videoEl.addEventListener('play', () => setPlaying(true));
+  videoEl.addEventListener('pause', () => setPlaying(false));
+
+  // Timeline interaction
+  let draggingMarker = null; // 'a', 'b', or null
+  let isDraggingPlayhead = false;
+
+  function getTimeFromEvent(e) {
+    const rect = timeline.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    return (x / rect.width) * media.duration;
+  }
+
+  function isNearMarker(e, markerEl, t) {
+    if (t === null) return false;
+    const rect = timeline.getBoundingClientRect();
+    const markerX = (t / media.duration) * rect.width;
+    const mouseX = e.clientX - rect.left;
+    return Math.abs(mouseX - markerX) < 10;
+  }
+
+  markerA.addEventListener('mousedown', e => {
+    if (!media || pointA === null) return;
+    e.stopPropagation();
+    draggingMarker = 'a';
+    document.body.style.cursor = 'ew-resize';
+  });
+
+  markerB.addEventListener('mousedown', e => {
+    if (!media || pointB === null) return;
+    e.stopPropagation();
+    draggingMarker = 'b';
+    document.body.style.cursor = 'ew-resize';
+  });
+
+  timeline.addEventListener('mousedown', e => {
+    if (!media) return;
+    // Check if clicking near A or B marker
+    if (pointA !== null && isNearMarker(e, markerA, pointA)) {
+      draggingMarker = 'a';
+      document.body.style.cursor = 'ew-resize';
+      return;
+    }
+    if (pointB !== null && isNearMarker(e, markerB, pointB)) {
+      draggingMarker = 'b';
+      document.body.style.cursor = 'ew-resize';
+      return;
+    }
+    isDraggingPlayhead = true;
+    const t = getTimeFromEvent(e);
+    media.currentTime = t;
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!media) return;
+    if (draggingMarker) {
+      const t = Math.max(0, Math.min(getTimeFromEvent(e), media.duration));
+      if (draggingMarker === 'a') {
+        pointA = t;
+        if (pointB !== null && pointA >= pointB) pointB = null;
+      } else {
+        pointB = t;
+        if (pointA !== null && pointB <= pointA) pointA = null;
+      }
+      updateABUI();
+      return;
+    }
+    if (isDraggingPlayhead) {
+      const t = getTimeFromEvent(e);
+      media.currentTime = Math.max(0, Math.min(t, media.duration));
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    draggingMarker = null;
+    isDraggingPlayhead = false;
+    document.body.style.cursor = '';
+  });
+
+  // A / B buttons
+  btnA.addEventListener('click', () => {
+    if (!media) return;
+    pointA = media.currentTime;
+    // Reset B if A > B
+    if (pointB !== null && pointA >= pointB) { pointB = null; }
+    updateABUI();
+  });
+
+  btnB.addEventListener('click', () => {
+    if (!media) return;
+    pointB = media.currentTime;
+    if (pointA !== null && pointB <= pointA) { pointA = null; }
+    updateABUI();
+  });
+
+  btnClear.addEventListener('click', clearAB);
+
+  function clearAB() {
+    pointA = null; pointB = null;
+    updateABUI();
+  }
+
+  function updateABUI() {
+    const dur = media ? media.duration : 0;
+
+    if (pointA !== null) {
+      markerA.classList.add('visible');
+      markerA.style.left = (pointA / dur * 100) + '%';
+      document.getElementById('aTime').textContent = fmt(pointA, true);
+      btnA.classList.add('active');
+    } else {
+      markerA.classList.remove('visible');
+      document.getElementById('aTime').textContent = '—';
+      btnA.classList.remove('active');
+    }
+
+    if (pointB !== null) {
+      markerB.classList.add('visible');
+      markerB.style.left = (pointB / dur * 100) + '%';
+      document.getElementById('bTime').textContent = fmt(pointB, true);
+      btnB.classList.add('active');
+    } else {
+      markerB.classList.remove('visible');
+      document.getElementById('bTime').textContent = '—';
+      btnB.classList.remove('active');
+    }
+
+    // Loop region
+    if (pointA !== null && pointB !== null) {
+      const left = pointA / dur * 100;
+      const width = (pointB - pointA) / dur * 100;
+      loopRegion.style.left = left + '%';
+      loopRegion.style.width = width + '%';
+      loopRegion.classList.add('visible');
+    } else {
+      loopRegion.classList.remove('visible');
+    }
+  }
+
+  // RAF loop
+  function startRAF() {
+    cancelAnimationFrame(raf);
+    function tick() {
+      if (media && !isNaN(media.duration)) {
+        const pct = media.currentTime / media.duration;
+        playhead.style.left = (pct * 100) + '%';
+        document.getElementById('currentTime').textContent = fmt(media.currentTime, true);
+        document.getElementById('timeLeft').textContent = fmt(media.currentTime);
+
+        // A-B loop enforcement
+        if (loopCheck.checked && pointA !== null && pointB !== null && !media.paused) {
+          if (media.currentTime >= pointB) {
+            media.currentTime = pointA;
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }
+    tick();
+  }
+
+  // Media ended
+  function onEnded() {
+    if (loopCheck.checked) {
+      if (pointA !== null) {
+        media.currentTime = pointA;
+      } else {
+        media.currentTime = 0;
+      }
+      media.play();
+    } else {
+      setPlaying(false);
+    }
+  }
+  audioEl.addEventListener('ended', onEnded);
+  videoEl.addEventListener('ended', onEnded);
+
+  // Speed
+  speedRange.addEventListener('input', () => {
+    const v = parseFloat(speedRange.value);
+    speedVal.textContent = v.toFixed(2) + '×';
+    if (media) media.playbackRate = v;
+    document.querySelectorAll('.speed-btn').forEach(b => {
+      b.classList.toggle('active', parseFloat(b.dataset.speed) === v);
+    });
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = parseFloat(btn.dataset.speed);
+      speedRange.value = v;
+      speedVal.textContent = v.toFixed(2) + '×';
+      if (media) media.playbackRate = v;
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (!media || e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      btnPlay.click();
+    }
+    if (e.key === 'a' || e.key === 'A') btnA.click();
+    if (e.key === 'b' || e.key === 'B') btnB.click();
+    if (e.key === 'c' || e.key === 'C') clearAB();
+    if (e.key === 'ArrowLeft') { e.preventDefault(); if(media) media.currentTime = Math.max(0, media.currentTime - 2); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if(media) media.currentTime = Math.min(media.duration, media.currentTime + 2); }
+  });
+</script>
+</body>
+</html>
